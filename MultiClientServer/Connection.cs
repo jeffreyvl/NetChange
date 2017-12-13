@@ -1,38 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
-using System.Net;
 using System.Threading;
 
 namespace MultiClientServer
 {
-    class Connection
+    internal class Connection
     {
+        public int Poort;
         public StreamReader Read;
-        public StreamWriter Write;
-        public int poort;
         public Dictionary<int, int> RoutingTable = new Dictionary<int, int>();
-        public object rtLocked = new object();
+        public object RtLocked = new object();
+        public StreamWriter Write;
 
         // Connection heeft 2 constructoren: deze constructor wordt gebruikt als wij CLIENT worden bij een andere SERVER
         public Connection(int port)
         {
-            poort = port;
-            TcpClient client = new TcpClient("localhost", port);
+            Poort = port;
+            var client = new TcpClient("localhost", port);
             Read = new StreamReader(client.GetStream());
-            Write = new StreamWriter(client.GetStream());
-            Write.AutoFlush = true;
+            Write = new StreamWriter(client.GetStream()) {AutoFlush = true};
 
 
             // De server kan niet zien van welke poort wij client zijn, dit moeten we apart laten weten
             Write.WriteLine("Poort: " + Program.MijnPoort);
 
             Console.WriteLine($"Verbonden: {port}");
-            lock(Program.prefNBLocked)
+            lock (Program.PrefNbLocked)
+            {
                 Program.SendRoutingTable(this);
+            }
             // Start het reader-loopje
             new Thread(ReaderThread).Start();
         }
@@ -40,10 +39,14 @@ namespace MultiClientServer
         // Deze constructor wordt gebruikt als wij SERVER zijn en een CLIENT maakt met ons verbinding
         public Connection(StreamReader read, StreamWriter write, int port)
         {
-            Read = read; Write = write; poort = port;
+            Read = read;
+            Write = write;
+            Poort = port;
             Console.WriteLine($"Verbonden: {port}");
-            lock(Program.prefNBLocked)
+            lock (Program.PrefNbLocked)
+            {
                 Program.SendRoutingTable(this);
+            }
             // Start het reader-loopje
             new Thread(ReaderThread).Start();
         }
@@ -57,11 +60,12 @@ namespace MultiClientServer
             {
                 while (true)
                 {
-                    string s = Read.ReadLine();
-                    string[] split = s.Split(' ');
+                    var s = Read.ReadLine();
+                    var split = s.Split(' ');
+
                     if (split[0] == "UpdateRoutingTable")
                     {
-                        UpdateRoutingTable(int.Parse(s.Split(' ')[1]), int.Parse(s.Split(' ')[2]));
+                        UpdateRoutingTable(int.Parse(split[1]), int.Parse(split[2]));
                     }
                     else if (split[0] == "Message")
                     {
@@ -85,19 +89,21 @@ namespace MultiClientServer
             }
             catch
             {
-                Console.WriteLine($"Verbroken: {poort}");
-                lock (Program.bLocked)
-                    Program.Buren.Remove(poort);
+                Console.WriteLine($"Verbroken: {Poort}");
+                lock (Program.BLocked)
+                {
+                    Program.Buren.Remove(Poort);
+                }
 
-                List<int> nodes = new List<int>();
-                lock (Program.prefNBLocked)
-                    foreach (var node in Program.PreferredNeighbour.Keys)
-                        nodes.Add(node);
+                var nodes = new List<int>();
+                lock (Program.PrefNbLocked)
+                {
+                    nodes.AddRange(Program.PreferredNeighbour.Keys);
+                }
 
-                int length = nodes.Count;
+                var length = nodes.Count;
                 for (var i = 0; i < length; i++)
                     Program.UpdatePreferredNeighbour(nodes[i]);
-
             } // Verbinding is kennelijk verbroken
         }
 
@@ -108,19 +114,15 @@ namespace MultiClientServer
 
         public void UpdateRoutingTable(int node, int dis)
         {
-            if (node != Program.MijnPoort)
+            if (node == Program.MijnPoort) return;
+            lock (RtLocked)
             {
-                lock (rtLocked)
-                {
-                    if (!RoutingTable.ContainsKey(node))
-                        RoutingTable.Add(node, dis);
-                    else
-                        RoutingTable[node] = dis;
-                }
-                Program.UpdatePreferredNeighbour(node);
+                if (!RoutingTable.ContainsKey(node))
+                    RoutingTable.Add(node, dis);
+                else
+                    RoutingTable[node] = dis;
             }
+            Program.UpdatePreferredNeighbour(node);
         }
-
-
     }
 }

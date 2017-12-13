@@ -1,30 +1,28 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Linq;
-using System.Text;
+using System.Threading;
 
 namespace MultiClientServer
 {
-    class Program
+    internal class Program
     {
-        static public int MijnPoort;
+        public static int MijnPoort;
 
-        static public SortedDictionary<int, Connection> Buren = new SortedDictionary<int, Connection>();
-        static public Dictionary<int, Tuple<int, int>> PreferredNeighbour = new Dictionary<int, Tuple<int, int>>();
+        public static SortedDictionary<int, Connection> Buren = new SortedDictionary<int, Connection>();
+        public static Dictionary<int, Tuple<int, int>> PreferredNeighbour = new Dictionary<int, Tuple<int, int>>();
 
-        static public object bLocked = new object();
-        static public object prefNBLocked = new object();
+        public static object BLocked = new object();
+        public static object PrefNbLocked = new object();
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            string[] split;
             MijnPoort = int.Parse(args[0]);
-            Server MijnServer = new Server(MijnPoort);
+            var mijnServer = new Server(MijnPoort);
             PreferredNeighbour.Add(MijnPoort, Tuple.Create(0, 0));
             for (var i = 1; i < args.Length; i++)
             {
-                int poort = int.Parse(args[i]);
+                var poort = int.Parse(args[i]);
                 if (poort > MijnPoort)
                     continue;
                 Connect(poort);
@@ -34,14 +32,14 @@ namespace MultiClientServer
 
             while (true)
             {
-                string input = Console.ReadLine().Trim();
-                split = input.Split(' ');
+                var input = Console.ReadLine().Trim();
+                var split = input.Split(' ');
                 int poort;
                 switch (split[0])
                 {
                     case "R":
                         // Routing table
-                        lock (prefNBLocked)
+                        lock (PrefNbLocked)
                         {
                             foreach (var node in PreferredNeighbour)
                             {
@@ -56,10 +54,12 @@ namespace MultiClientServer
 
                         poort = int.Parse(split[1]);
                         if (!PreferredNeighbour.ContainsKey(poort))
+                        {
                             Console.WriteLine("Hier is geen verbinding naar!");
+                        }
                         else
                         {
-                            string bericht = string.Join(" ", split.Skip(2));
+                            var bericht = string.Join(" ", split.Skip(2));
                             Buren[PreferredNeighbour[poort].Item2].Message(poort, bericht);
                         }
 
@@ -72,7 +72,7 @@ namespace MultiClientServer
                     case "D":
                         // Break connection
                         var dPoort = int.Parse(split[1]);
-                        lock(bLocked)
+                        lock (BLocked)
                         {
                             if (Buren.ContainsKey(dPoort))
                                 Buren[dPoort].Write.Close();
@@ -80,25 +80,23 @@ namespace MultiClientServer
                                 Console.WriteLine($"Geen verbinding met {dPoort}");
                         }
                         break;
-                    default:
-                        break;
                 }
-
             }
         }
 
-        static void Connect(int poort)
+        public static void Connect(int poort)
         {
-            bool connected = false;
+            var connected = false;
             Connection con = null;
-            lock (bLocked)
+            lock (BLocked)
             {
                 if (Buren.ContainsKey(poort))
+                {
                     Console.WriteLine("Hier is al verbinding naar!");
+                }
                 else
                 {
                     while (!connected)
-                    {
                         try
                         {
                             con = new Connection(poort);
@@ -109,28 +107,29 @@ namespace MultiClientServer
                         {
                             Thread.Sleep(10);
                         }
-                    }
                     UpdatePreferredNeighbour(poort);
                     Console.WriteLine($"Verbonden: {poort}");
-                    lock (prefNBLocked)
-                         SendRoutingTable(con);
+                    lock (PrefNbLocked)
+                    {
+                        SendRoutingTable(con);
+                    }
                 }
             }
         }
 
         public static void SendRoutingTable()
         {
-            for (int j = 0; j < PreferredNeighbour.Count; j++)
+            for (var j = 0; j < PreferredNeighbour.Count; j++)
             {
                 var k = PreferredNeighbour.ElementAt(j);
-                for (int i = 0; i < Buren.Count; i++)
+                for (var i = 0; i < Buren.Count; i++)
                     Buren.ElementAt(i).Value.Write.WriteLine($"UpdateRoutingTable {k.Key} {k.Value.Item1}");
             }
         }
 
         public static void SendRoutingTable(Connection b)
         {
-            for (int j = 0; j < PreferredNeighbour.Count; j++)
+            for (var j = 0; j < PreferredNeighbour.Count; j++)
             {
                 var k = PreferredNeighbour.ElementAt(j);
                 b.Write.WriteLine($"UpdateRoutingTable {k.Key} {k.Value.Item1}");
@@ -140,14 +139,13 @@ namespace MultiClientServer
         public static void SendRoutingTable(int node)
         {
             var k = PreferredNeighbour[node];
-            for (int i = 0; i < Buren.Count; i++)
+            for (var i = 0; i < Buren.Count; i++)
                 Buren.ElementAt(i).Value.Write.WriteLine($"UpdateRoutingTable {node} {k.Item1}");
-
         }
 
         public static void SendRoutingTable(int node, int dis)
         {
-            for (int i = 0; i < Buren.Count; i++)
+            for (var i = 0; i < Buren.Count; i++)
                 Buren.ElementAt(i).Value.Write.WriteLine($"UpdateRoutingTable {node} {dis}");
         }
 
@@ -155,33 +153,35 @@ namespace MultiClientServer
         {
             if (node == MijnPoort)
                 return;
-            int minDis = 100;
-            int prefNB = 0;
-            lock (bLocked)
+            var minDis = 100;
+            var prefNb = 0;
+            lock (BLocked)
             {
                 foreach (var b in Buren)
-                    lock (b.Value.rtLocked)
+                    lock (b.Value.RtLocked)
+                    {
                         if (b.Value.RoutingTable.ContainsKey(node) && b.Value.RoutingTable[node] < minDis)
                         {
                             minDis = b.Value.RoutingTable[node];
-                            prefNB = b.Key;
+                            prefNb = b.Key;
                         }
+                    }
 
-                var tup = Tuple.Create(minDis + 1, prefNB);
-                lock (prefNBLocked)
+                var tup = Tuple.Create(minDis + 1, prefNb);
+                lock (PrefNbLocked)
                 {
                     if (minDis < PreferredNeighbour.Count)
                     {
                         if (!PreferredNeighbour.ContainsKey(node))
                         {
                             PreferredNeighbour.Add(node, tup);
-                            Console.WriteLine($"Afstand naar {node} is nu {minDis + 1} via {prefNB}");
+                            Console.WriteLine($"Afstand naar {node} is nu {minDis + 1} via {prefNb}");
                             SendRoutingTable(node);
                         }
                         else if (!tup.Equals(PreferredNeighbour[node]))
                         {
                             PreferredNeighbour[node] = tup;
-                            Console.WriteLine($"Afstand naar {node} is nu {minDis + 1} via {prefNB}");
+                            Console.WriteLine($"Afstand naar {node} is nu {minDis + 1} via {prefNb}");
                             SendRoutingTable(node);
                         }
                     }
@@ -199,5 +199,3 @@ namespace MultiClientServer
         }
     }
 }
-
-
